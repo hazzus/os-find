@@ -4,6 +4,7 @@ project(os-find)
 add_executable(${PROJECT_NAME} "main.cpp" "exec_utils.hpp")
 
 set(CMAKE_CXX_FLAGS_DEBUG "-fsanitize=address,undefined")
+set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 find_package(Boost REQUIRED COMPONENTS program_options)
 target_link_libraries(${PROJECT_NAME} ${Boost_LIBRARIES})
