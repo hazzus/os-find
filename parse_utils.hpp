@@ -15,7 +15,7 @@ static std::map<std::string, std::string> options = {
     {"path",           "(first argument) path to directory"},
     {"inum",           "inode number"},
     {"name",           "name of file"},
-    {"size",           "[-=+ size of file]"},
+    {"size",           "[-=+] size of file]"},
     {"nlinks",         "number of hardlinks"},
     {"exec",           "path to execution file"}
 };
@@ -60,11 +60,11 @@ bool check(std::map<std::string, std::string> const &args) {
 }
 
 std::string help() {
-  std::string result =
-      std::accumulate(options.begin(), options.end(), std::string("Options:\n"),
-                      [](std::string a, std::pair<std::string, std::string> p) {
-                        return a + "-" + p.first + ": " + p.second + "\n";
-                      });
+  std::string result = std::accumulate(
+      options.begin(), options.end(), std::string("Options:\n"),
+      [](std::string a, std::pair<std::string, std::string> p) {
+        return std::move(a) + "-" + p.first + ": " + p.second + "\n";
+      });
   return result;
 }
 
