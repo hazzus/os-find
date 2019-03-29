@@ -1,35 +1,37 @@
-#include <boost/program_options.hpp>
 #include <deque>
+#include <functional>
 #include <iostream>
+#include <map>
 #include <vector>
 
+#include <cstring>
 #include <dirent.h>
+#include <memory.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
 #include "exec_utils.hpp"
-
-namespace po = boost::program_options;
+#include "parse_utils.hpp"
 
 struct stat_predicate {
-  stat_predicate(po::variables_map const &vars_map) {
+  stat_predicate(std::map<std::string, std::string> const &vars_map) {
     if (vars_map.count("inum")) {
-      inode_predicate = actual_predicate<ino_t>(vars_map["inum"].as<ino_t>(),
-                                                equivalent<ino_t>);
+      inode_predicate = actual_predicate<ino_t>(
+          static_cast<ino_t>(stoll(vars_map.at("inum"))), equivalent<ino_t>);
     }
     if (vars_map.count("name")) {
       name_predicate = actual_predicate<const char *>(
-          vars_map["name"].as<std::string>().c_str(),
-          [](char const *one, char const *two) {
+          vars_map.at("name").c_str(), [](char const *one, char const *two) {
             return std::strcmp(one, two) == 0;
           });
     }
     if (vars_map.count("nlinks")) {
       nlink_predicate = actual_predicate<nlink_t>(
-          vars_map["nlinks"].as<nlink_t>(), equivalent<nlink_t>);
+          static_cast<nlink_t>(stoll(vars_map.at("nlinks"))),
+          equivalent<nlink_t>);
     }
     if (vars_map.count("size")) {
-      std::string size_control = vars_map["size"].as<std::string>();
+      std::string size_control = vars_map.at("size");
       try {
         off_t needed_size = static_cast<off_t>(stoi(size_control.substr(1)));
         if (size_control.front() == '=') {
@@ -125,27 +127,14 @@ find(std::string dir_path, std::function<bool(char *, struct stat)> predicate) {
 }
 
 int main(int argc, char *argv[]) {
-  po::positional_options_description required;
-  required.add("path", -1);
-  po::options_description allowed("Allowed options");
-  // clang-format off
-  allowed.add_options()
-          ("help,h", "Help options")
-          ("path",   po::value<std::string>(), "Path to directory that should be scanned")
-          ("inum",   po::value<ino_t>(),       "Number of inode")
-          ("name",   po::value<std::string>(), "Name of file")
-          ("size",   po::value<std::string>(), "[+=-] Control size of file")
-          ("nlinks", po::value<nlink_t>(),     "Amount of hardlinks at file")
-          ("exec",   po::value<std::string>(), "Path to program to execute with result file as single parameter");
-  // clang-format on
-  po::command_line_parser parser{argc, argv};
-  parser.positional(required).options(allowed);
-  po::variables_map vars_map;
-  try {
-    store(parser.run(), vars_map);
-  } catch (const po::error &e) {
-    std::cerr << e.what() << std::endl;
+  auto vars_map = args::parse(argc, argv);
+  if (!args::check(vars_map)) {
     return -1;
+  }
+
+  if (vars_map.count("help")) {
+    std::cout << args::help();
+    return 0;
   }
 
   if (!vars_map.count("path")) {
@@ -153,15 +142,8 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  if (vars_map.count("help")) {
-    std::cout << "First argument must be path to directory where to search"
-              << std::endl;
-    std::cout << allowed;
-    return 0;
-  }
-
   stat_predicate predicate(vars_map);
-  auto result = find(vars_map["path"].as<std::string>(), predicate);
+  auto result = find(vars_map["path"], predicate);
 
   for (std::string const &file : result) {
     std::cout << file << std::endl;
