@@ -93,21 +93,21 @@ bool is_dots(char const *filename) {
 std::vector<std::string>
 find(std::string dir_path, std::function<bool(char *, struct stat)> predicate) {
   std::vector<std::string> result;
-  auto directory = opendir(dir_path.c_str());
-  std::deque<std::pair<DIR *, std::string>> dir_queue;
-  dir_queue.push_back({directory, dir_path});
+  std::deque<std::string> dir_queue;
+  dir_queue.push_back(dir_path);
   while (!dir_queue.empty()) {
     auto current_dir = dir_queue.front();
     dir_queue.pop_front();
-    if (current_dir.first == nullptr) {
-      error("Error attempting to open: " + current_dir.second);
+    DIR *current = opendir(current_dir.c_str());
+    if (current == nullptr) {
+      error("Error attempting to open: " + current_dir);
       continue;
     }
-    while (auto file = readdir(current_dir.first)) {
+    while (auto file = readdir(current)) {
       auto filename = file->d_name;
       if (!filename || is_dots(filename))
         continue;
-      std::string filepath = current_dir.second + "/" + filename;
+      std::string filepath = current_dir + "/" + filename;
 
       struct stat buffer;
       if (lstat(filepath.c_str(), &buffer) == -1) {
@@ -116,17 +116,22 @@ find(std::string dir_path, std::function<bool(char *, struct stat)> predicate) {
       }
 
       if (S_ISDIR(buffer.st_mode)) {
-        dir_queue.emplace_back(opendir(filepath.c_str()), filepath);
+        dir_queue.emplace_back(filepath);
       } else if (predicate(filename, buffer)) {
         result.push_back(filepath);
       }
     }
-    closedir(current_dir.first);
+    closedir(current);
   }
   return result;
 }
 
 int main(int argc, char *argv[]) {
+  if (argc <= 1) {
+    std::cout << "At least one argument expected. Usage:" << std::endl;
+    std::cout << args::help();
+    return -1;
+  }
   auto vars_map = args::parse(argc, argv);
   if (!args::check(vars_map)) {
     return -1;
