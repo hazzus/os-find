@@ -14,149 +14,155 @@
 #include "parse_utils.hpp"
 
 struct stat_predicate {
-  stat_predicate(std::map<std::string, std::string> const &vars_map) {
-    if (vars_map.count("inum")) {
-      inode_predicate = actual_predicate<ino_t>(
-          static_cast<ino_t>(stoll(vars_map.at("inum"))), equivalent<ino_t>);
-    }
-    if (vars_map.count("name")) {
-      name_predicate = actual_predicate<const char *>(
-          vars_map.at("name").c_str(), [](char const *one, char const *two) {
-            return std::strcmp(one, two) == 0;
-          });
-    }
-    if (vars_map.count("nlinks")) {
-      nlink_predicate = actual_predicate<nlink_t>(
-          static_cast<nlink_t>(stoll(vars_map.at("nlinks"))),
-          equivalent<nlink_t>);
-    }
-    if (vars_map.count("size")) {
-      std::string size_control = vars_map.at("size");
-      try {
-        off_t needed_size = static_cast<off_t>(stoi(size_control.substr(1)));
-        if (size_control.front() == '=') {
-          size_predicate =
-              actual_predicate<off_t>(needed_size, equivalent<off_t>);
-        } else if (size_control.front() == '-') {
-          size_predicate = actual_predicate<off_t>(
-              needed_size,
-              [](off_t const &one, off_t const &two) { return one < two; });
-        } else if (size_control.front() == '+') {
-          size_predicate = actual_predicate<off_t>(
-              needed_size,
-              [](off_t const &one, off_t const &two) { return one > two; });
-        } else {
-          std::cerr << "Incorrect size key, ignoring it";
+    stat_predicate(std::map<std::string, std::string> const &vars_map) {
+        if (vars_map.count("inum")) {
+            inode_predicate = actual_predicate<ino_t>(
+                static_cast<ino_t>(stoll(vars_map.at("inum"))),
+                equivalent<ino_t>);
         }
-      } catch (std::invalid_argument &) {
-        std::cerr << "Invalid size argument, ignoring it";
-      }
+        if (vars_map.count("name")) {
+            name_predicate = actual_predicate<const char *>(
+                vars_map.at("name").c_str(),
+                [](char const *one, char const *two) {
+                    return std::strcmp(one, two) == 0;
+                });
+        }
+        if (vars_map.count("nlinks")) {
+            nlink_predicate = actual_predicate<nlink_t>(
+                static_cast<nlink_t>(stoll(vars_map.at("nlinks"))),
+                equivalent<nlink_t>);
+        }
+        if (vars_map.count("size")) {
+            std::string size_control = vars_map.at("size");
+            try {
+                if (size_control.front() == '-') {
+                    off_t needed_size =
+                        static_cast<off_t>(stoi(size_control.substr(1)));
+                    size_predicate = actual_predicate<off_t>(
+                        needed_size, [](off_t const &one, off_t const &two) {
+                            return one < two;
+                        });
+                } else if (size_control.front() == '+') {
+                    off_t needed_size =
+                        static_cast<off_t>(stoi(size_control.substr(1)));
+                    size_predicate = actual_predicate<off_t>(
+                        needed_size, [](off_t const &one, off_t const &two) {
+                            return one > two;
+                        });
+                } else {
+                    off_t needed_size = static_cast<off_t>(stoi(size_control));
+                    size_predicate =
+                        actual_predicate<off_t>(needed_size, equivalent<off_t>);
+                }
+            } catch (std::invalid_argument &) {
+                std::cerr << "Invalid size argument, ignoring it";
+            }
+        }
     }
-  }
 
-  bool operator()(char *filename, struct stat const &fileinfo) {
-    // clang-format off
+    bool operator()(char *filename, struct stat const &fileinfo) {
+        // clang-format off
     return inode_predicate(fileinfo.st_ino) &&
            name_predicate(filename) &&
            nlink_predicate(fileinfo.st_nlink) &&
            size_predicate(fileinfo.st_size);
-    // clang-format on
-  }
+        // clang-format on
+    }
 
-private:
-  template <typename T> static bool true_predicate(T) { return true; }
+  private:
+    template <typename T> static bool true_predicate(T) { return true; }
 
-  template <typename T> static bool equivalent(T const &one, T const &two) {
-    return one == two;
-  }
+    template <typename T> static bool equivalent(T const &one, T const &two) {
+        return one == two;
+    }
 
-  template <typename T> struct actual_predicate {
-    T needed;
-    std::function<bool(T, T)> comparator;
-    actual_predicate(T const &n, std::function<bool(T, T)> const &c)
-        : needed(n), comparator(c) {}
-    bool operator()(T const &real) { return comparator(real, needed); }
-  };
+    template <typename T> struct actual_predicate {
+        T needed;
+        std::function<bool(T, T)> comparator;
+        actual_predicate(T const &n, std::function<bool(T, T)> const &c)
+            : needed(n), comparator(c) {}
+        bool operator()(T const &real) { return comparator(real, needed); }
+    };
 
-  std::function<bool(ino_t)> inode_predicate = true_predicate<ino_t>;
-  std::function<bool(const char *)> name_predicate =
-      true_predicate<const char *>;
-  std::function<bool(nlink_t)> nlink_predicate = true_predicate<nlink_t>;
-  std::function<bool(off_t)> size_predicate = true_predicate<off_t>;
+    std::function<bool(ino_t)> inode_predicate = true_predicate<ino_t>;
+    std::function<bool(const char *)> name_predicate =
+        true_predicate<const char *>;
+    std::function<bool(nlink_t)> nlink_predicate = true_predicate<nlink_t>;
+    std::function<bool(off_t)> size_predicate = true_predicate<off_t>;
 };
 
 bool is_dots(char const *filename) {
-  return (strcmp(filename, ".") == 0) || (strcmp(filename, "..") == 0);
+    return (strcmp(filename, ".") == 0) || (strcmp(filename, "..") == 0);
 }
 
 // bfs traversal
 std::vector<std::string>
 find(std::string dir_path, std::function<bool(char *, struct stat)> predicate) {
-  std::vector<std::string> result;
-  std::deque<std::string> dir_queue;
-  dir_queue.push_back(dir_path);
-  while (!dir_queue.empty()) {
-    auto current_dir = dir_queue.front();
-    dir_queue.pop_front();
-    DIR *current = opendir(current_dir.c_str());
-    if (current == nullptr) {
-      error("Error attempting to open: " + current_dir);
-      continue;
-    }
-    while (auto file = readdir(current)) {
-      auto filename = file->d_name;
-      if (!filename || is_dots(filename))
-        continue;
-      std::string filepath = current_dir + "/" + filename;
+    std::vector<std::string> result;
+    std::deque<std::string> dir_queue;
+    dir_queue.push_back(dir_path);
+    while (!dir_queue.empty()) {
+        auto current_dir = dir_queue.front();
+        dir_queue.pop_front();
+        DIR *current = opendir(current_dir.c_str());
+        if (current == nullptr) {
+            error("Error attempting to open: " + current_dir);
+            continue;
+        }
+        while (auto file = readdir(current)) {
+            auto filename = file->d_name;
+            if (!filename || is_dots(filename))
+                continue;
+            std::string filepath = current_dir + "/" + filename;
 
-      struct stat buffer;
-      if (lstat(filepath.c_str(), &buffer) == -1) {
-        error(std::string("Could not open file: ") + filename);
-        continue;
-      }
+            struct stat buffer;
+            if (lstat(filepath.c_str(), &buffer) == -1) {
+                error(std::string("Could not open file: ") + filename);
+                continue;
+            }
 
-      if (S_ISDIR(buffer.st_mode)) {
-        dir_queue.emplace_back(filepath);
-      } else if (predicate(filename, buffer)) {
-        result.push_back(filepath);
-      }
+            if (S_ISDIR(buffer.st_mode)) {
+                dir_queue.emplace_back(filepath);
+            } else if (predicate(filename, buffer)) {
+                result.push_back(filepath);
+            }
+        }
+        closedir(current);
     }
-    closedir(current);
-  }
-  return result;
+    return result;
 }
 
 int main(int argc, char *argv[]) {
-  if (argc <= 1) {
-    std::cout << "At least one argument expected. Usage:" << std::endl;
-    std::cout << args::help();
-    return -1;
-  }
-  auto vars_map = args::parse(argc, argv);
-  if (!args::check(vars_map)) {
-    return -1;
-  }
+    if (argc <= 1) {
+        std::cout << "At least one argument expected. Usage:" << std::endl;
+        std::cout << args::help();
+        return -1;
+    }
+    auto vars_map = args::parse(argc, argv);
+    if (!args::check(vars_map)) {
+        return -1;
+    }
 
-  if (vars_map.count("help")) {
-    std::cout << args::help();
+    if (vars_map.count("help")) {
+        std::cout << args::help();
+        return 0;
+    }
+
+    if (!vars_map.count("path")) {
+        std::cerr << "No path to dir. Exiting";
+        return -1;
+    }
+
+    stat_predicate predicate(vars_map);
+    auto result = find(vars_map["path"], predicate);
+
+    for (std::string const &file : result) {
+        std::cout << file << std::endl;
+    }
+
+    if (vars_map.count("exec")) {
+        pre_execute(result);
+    }
+
     return 0;
-  }
-
-  if (!vars_map.count("path")) {
-    std::cerr << "No path to dir. Exiting";
-    return -1;
-  }
-
-  stat_predicate predicate(vars_map);
-  auto result = find(vars_map["path"], predicate);
-
-  for (std::string const &file : result) {
-    std::cout << file << std::endl;
-  }
-
-  if (vars_map.count("exec")) {
-    pre_execute(result);
-  }
-
-  return 0;
 }
